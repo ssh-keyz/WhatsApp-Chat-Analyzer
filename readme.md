@@ -14,8 +14,7 @@ This project aims to analyze chat data from a text file to extract user interest
 ### Technologies Used
 
 - Python 3.8+
-- PyTorch
-- Transformers (Hugging Face)
+- spaCy
 - scikit-learn
 - Regular expressions (re module)
 
@@ -28,9 +27,10 @@ This project aims to analyze chat data from a text file to extract user interest
 ### Algorithms and Models
 
 - **Text Parsing**: Regular expressions for extracting date, time, user, and message content.
-- **Interest Extraction**: 
+- **Interest Extraction**:
   - TF-IDF (Term Frequency-Inverse Document Frequency) for identifying important words.
-  - DistilBERT model for sentiment analysis.
+  - spaCy's NLP pipeline for part-of-speech tagging and named entity recognition.
+  - Simple rule-based approach for sentiment analysis.
 - **Similarity Calculation**: Cosine similarity between user interest vectors.
 
 ## Setup and Installation
@@ -52,9 +52,9 @@ This project aims to analyze chat data from a text file to extract user interest
    pip install -r requirements.txt
    ```
 
-4. Download the pre-trained model:
+4. Download the spaCy model:
    ```
-   python -c "from transformers import DistilBertTokenizer, DistilBertForSequenceClassification; DistilBertTokenizer.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english'); DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english')"
+   python -m spacy download en_core_web_sm
    ```
 
 ## Usage
@@ -84,11 +84,13 @@ chat-analysis-project/
 
 ## Future Improvements
 
-- Implement named entity recognition for more accurate interest extraction.
+- Implement a more sophisticated sentiment analysis using spaCy's text classification capabilities.
+- Fine-tune the spaCy model on domain-specific data for improved performance.
 - Add topic modeling using techniques like LDA (Latent Dirichlet Allocation).
 - Develop a user interface for easier interaction with the analysis tools.
 - Incorporate time-based analysis to track interest changes over time.
 - Add data visualization features for better insight presentation.
+- Implement custom named entity recognition for domain-specific entities.
 
 ## Contributing
 
