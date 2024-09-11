@@ -1,6 +1,8 @@
 import sys
+import csv
 from chat_parser import parse_chat_file
-from interest_extractor import extract_interests, calculate_user_similarity
+from interest_extractor import extract_interests
+from similarity_calculator import calculate_user_similarity
 from collections import defaultdict
 import json
 
@@ -39,6 +41,14 @@ def export_results(user_interests, similarities, output_file):
         json.dump(results, f, indent=2)
     print(f"\nResults exported to {output_file}")
 
+def export_similarities_to_csv(similarities, output_file):
+    with open(output_file, 'w', newline='') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(['User1', 'User2', 'Similarity'])
+        for (user1, user2), similarity in similarities.items():
+            csvwriter.writerow([user1, user2, f"{similarity:.2f}"])
+    print(f"\nSimilarity scores exported to {output_file}")
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python analyze_chat.py <chat_file_path> [output_file_path]")
@@ -55,6 +65,10 @@ def main():
 
         if output_file_path:
             export_results(user_interests, similarities, output_file_path)
+
+        # Export similarity scores to CSV
+        csv_output_path = 'user_similarities.csv'
+        export_similarities_to_csv(similarities, csv_output_path)
 
     except FileNotFoundError:
         print(f"Error: File '{chat_file_path}' not found.")
