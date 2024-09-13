@@ -6,6 +6,22 @@ def parse_chat_file(file_path):
     chat_data = defaultdict(list)
     date_pattern = r'\[(\d{1,2}/\d{1,2}/\d{2,4}),\s(\d{1,2}:\d{2}:\d{2}\s?(?:AM|PM)?)\]'
     user_pattern = r'(.*?):'
+    system_message_patterns = [
+        r'.*joined from the community',
+        r'.*requested to join',
+        r'.*joined using this group\'s invite link',
+        r'.*added .*',
+        r'.*changed the subject to ".*"',
+        r'.*changed this group\'s icon',
+        r'.*changed the group description',
+        r'.*changed the group settings to allow .*',
+        r'.*changed the group settings to only allow .*',
+        r'.*created group ".*"'
+    ]
+    important_system_messages = [
+        r'.*removed .*',
+        r'.*left'
+    ]
 
     with open(file_path, 'r', encoding='utf-8') as file:
         for line_number, line in enumerate(file, 1):
@@ -32,21 +48,29 @@ def parse_chat_file(file_path):
                         print(f"Warning: Unable to parse date/time on line {line_number}: {e}")
                         continue
                     
-                    user_match = re.search(user_pattern, line[date_match.end():].strip())
+                    message_content = line[date_match.end():].strip()
+                    
+                    # Check if the message is a system message to be ignored
+                    if any(re.match(pattern, message_content) for pattern in system_message_patterns):
+                        continue  # Skip these system messages
+                    
+                    # Check if the message is an important system message
+                    if any(re.match(pattern, message_content) for pattern in important_system_messages):
+                        chat_data['SYSTEM'].append({
+                            'timestamp': timestamp,
+                            'message': message_content,
+                            'line_number': line_number
+                        })
+                        continue
+                    
+                    user_match = re.match(user_pattern, message_content)
                     if user_match:
                         user = user_match.group(1).strip()
-                        message = line[date_match.end() + user_match.end() + 1:].strip()
+                        message = message_content[user_match.end():].strip()
                         
                         chat_data[user].append({
                             'timestamp': timestamp,
                             'message': message,
-                            'line_number': line_number
-                        })
-                    else:
-                        # Handle system messages or other non-user messages
-                        chat_data['SYSTEM'].append({
-                            'timestamp': timestamp,
-                            'message': line[date_match.end():].strip(),
                             'line_number': line_number
                         })
                 else:
@@ -91,8 +115,8 @@ if __name__ == "__main__":
         print(f"Date range: {stats['date_range']['start']} to {stats['date_range']['end']}")
         
         # Optionally, you can uncomment the following lines to save the parsed data to a JSON file
-        # with open('parsed_chat_data.json', 'w', encoding='utf-8') as f:
-        #     json.dump(parsed_data, f, indent=2, default=str)
+        with open('parsed_chat_data.json', 'w', encoding='utf-8') as f:
+            json.dump(parsed_data, f, indent=2, default=str)
         # print("Parsed data saved to 'parsed_chat_data.json'")
         
     except FileNotFoundError:
