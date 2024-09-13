@@ -32,7 +32,10 @@ def export_sentiment_distribution(distribution, output_file='sentiment_distribut
 def analyze_chat_data(chat_data):
     user_interests = {}
     for user, messages in chat_data.items():
-        user_interests[user] = extract_interests(messages)
+        if messages:  # Check if the user has any messages
+            user_interests[user] = extract_interests(messages)
+        else:
+            user_interests[user] = {'top_words': [], 'sentiment': 'N/A'}  # Add users with no messages
 
     similarities = {}
     users = list(user_interests.keys())
@@ -73,6 +76,14 @@ def export_similarities_to_csv(similarities, output_file):
         for (user1, user2), similarity in similarities.items():
             csvwriter.writerow([user1, user2, f"{similarity:.2f}"])
     print(f"\nSimilarity scores exported to {output_file}")
+
+def export_user_interests_to_csv(user_interests, output_file='user_interests.csv'):
+    with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['User', 'Top Words', 'Sentiment'])
+        for user, interests in user_interests.items():
+            writer.writerow([user, ', '.join(interests.get('top_words', [])), interests.get('sentiment', 'N/A')])
+    print(f"User interests exported to {output_file}")
 
 def main():
     if len(sys.argv) < 2:

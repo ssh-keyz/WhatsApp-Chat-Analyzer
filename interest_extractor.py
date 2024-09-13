@@ -2,12 +2,14 @@ import spacy
 from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import KMeans
 import csv
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import RobertaTokenizer, RobertaForSequenceClassification, AutoTokenizer, AutoModelForSequenceClassification
 from scipy.special import softmax
+import numpy as np
 
-# Replace spacy.prefer_gpu() with:
+# GPU setup
 if torch.backends.mps.is_available():
     spacy.require_gpu()
     torch.set_default_device('mps')
@@ -21,9 +23,9 @@ else:
 nlp = spacy.load("en_core_web_trf")
 
 class SentimentAnalyzer:
-    def __init__(self, model_name="distilbert-base-uncased-finetuned-sst-2-english"):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    def __init__(self, model_name="roberta-large"):
+        self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
+        self.model = RobertaForSequenceClassification.from_pretrained(model_name)
         self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         self.model.to(self.device)
 
@@ -83,17 +85,86 @@ def calculate_sentiment(doc):
     return f"{sentiment} (score: {score:.2f})"
 
 def calculate_user_similarity(user1_interests, user2_interests):
-    # This function remains unchanged
-    all_interests = list(set(user1_interests['top_words'] + user2_interests['top_words']))
-    vector1 = [1 if word in user1_interests['top_words'] else 0 for word in all_interests]
-    vector2 = [1 if word in user2_interests['top_words'] else 0 for word in all_interests]
+    return cosine_similarity(user1_interests['tfidf_matrix'], user2_interests['tfidf_matrix'])[0][0]
 
-    return cosine_similarity([vector1], [vector2])[0][0]
+def identify_group_interests(all_user_interests, top_n=10):
+    combined_interests = Counter()
+    for user_interests in all_user_interests.values():
+        combined_interests.update(user_interests['top_words'])
+    return [word for word, _ in combined_interests.most_common(top_n)]
+
+def score_users_by_interest(all_user_interests, interest):
+    scores = {}
+    for user, interests in all_user_interests.items():
+        if interest in interests['top_words']:
+            score = interests['top_words'].index(interest)
+            scores[user] = 1 / (score + 1)  # Higher score for earlier appearance
+        else:
+            scores[user] = 0
+    return scores
+
+def suggest_new_interests(user_interests, all_user_interests, top_n=5):
+    user_vector = user_interests['tfidf_matrix']
+    all_interests = set()
+    for interests in all_user_interests.values():
+        all_interests.update(interests['top_words'])
+    
+    new_interests = all_interests - set(user_interests['top_words'])
+    
+    vectorizer = user_interests['vectorizer']
+    new_interest_vectors = vectorizer.transform(new_interests)
+    
+    similarities = cosine_similarity(user_vector, new_interest_vectors)
+    
+    top_suggestions = sorted(zip(new_interests, similarities[0]), key=lambda x: x[1], reverse=True)[:top_n]
+    return [interest for interest, score in top_suggestions]
+
+def cluster_users(all_user_interests, n_clusters=3):
+    tfidf_matrix = np.vstack([interests['tfidf_matrix'].toarray() for interests in all_user_interests.values()])
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    cluster_labels = kmeans.fit_predict(tfidf_matrix)
+    return dict(zip(all_user_interests.keys(), cluster_labels))
 
 def export_user_interests_to_csv(user_interests, output_file='user_interests.csv'):
     with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['User', 'Top Words', 'Sentiment'])
+        writer.writerow(['User', 'Top Words', 'Sentiment', 'Suggested Interests'])
         for user, interests in user_interests.items():
-            writer.writerow([user, ', '.join(interests['top_words']), interests['sentiment']])
+            suggested = suggest_new_interests(interests, user_interests)
+            writer.writerow([user, ', '.join(interests['top_words']), interests['sentiment'], ', '.join(suggested)])
     print(f"User interests exported to {output_file}")
+
+def analyze_chat(chat_data):
+    all_user_interests = {user: extract_interests(messages) for user, messages in chat_data.items()}
+    group_interests = identify_group_interests(all_user_interests)
+    user_clusters = cluster_users(all_user_interests)
+    
+    results = {
+        'user_interests': all_user_interests,
+        'group_interests': group_interests,
+        'user_clusters': user_clusters,
+    }
+    
+    # Calculate user similarities
+    user_similarities = {}
+    for user1 in all_user_interests:
+        for user2 in all_user_interests:
+            if user1 != user2:
+                similarity = calculate_user_similarity(all_user_interests[user1], all_user_interests[user2])
+                user_similarities[(user1, user2)] = similarity
+    
+    results['user_similarities'] = user_similarities
+    
+    # Score users by each group interest
+    interest_scores = {}
+    for interest in group_interests:
+        interest_scores[interest] = score_users_by_interest(all_user_interests, interest)
+    
+    results['interest_scores'] = interest_scores
+    
+    return results
+
+# Example usage
+# chat_data = parse_chat_file('chat.txt')  # You need to implement this function
+# results = analyze_chat(chat_data)
+# export_user_interests_to_csv(results['user_interests'])

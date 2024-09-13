@@ -1,24 +1,31 @@
 # Core data processing and analysis libraries
-numpy==1.21.5
-pandas==1.3.5
-scikit-learn==1.0.2
+numpy>=1.22.0,<2.0.0
+pandas>=1.3.5,<2.0.0
+scikit-learn>=1.0.2,<2.0.0
 
 # Natural Language Processing
-spacy==3.2.0
-emoji==2.2.0
+spacy>=3.2.0,<4.0.0
+emoji>=2.2.0,<3.0.0
 
 # Data visualization (optional, but recommended for future enhancements)
-matplotlib==3.5.2
-seaborn==0.11.2
+matplotlib>=3.5.2,<4.0.0
+seaborn>=0.11.2,<1.0.0
 
 # Utility libraries
-tqdm==4.64.0
+tqdm>=4.64.0,<5.0.0
 
 # Web framework (optional, for potential future web interface)
-flask==2.0.3
+flask>=2.0.3,<3.0.0
+
+# Transformers library for RoBERTa-large
+transformers>=4.29.2,<5.0.0
+
+# PyTorch for M1 Mac (MPS support)
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch>=2.0.0
 
 # SpaCy model
-https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.2.0/en_core_web_trf-3.2.0.tar.gz
+https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.2.0/en_core_web_trf-3.2.0-py3-none-any.whl
 
 # CUDA support for SpaCy (uncomment if needed)
 # spacy[cuda113]
