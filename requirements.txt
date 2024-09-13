@@ -5,6 +5,7 @@ scikit-learn==1.0.2
 
 # Natural Language Processing
 spacy==3.2.0
+emoji==2.2.0
 
 # Data visualization (optional, but recommended for future enhancements)
 matplotlib==3.5.2
@@ -16,5 +17,8 @@ tqdm==4.64.0
 # Web framework (optional, for potential future web interface)
 flask==2.0.3
 
-spacy[cuda113]
+# SpaCy model
 https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.2.0/en_core_web_trf-3.2.0.tar.gz
+
+# CUDA support for SpaCy (uncomment if needed)
+# spacy[cuda113]

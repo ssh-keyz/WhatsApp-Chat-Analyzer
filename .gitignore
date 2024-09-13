@@ -3,3 +3,9 @@
 
 # Ignore chats directory
 /chats/*
+
+# Ignore generated data files
+parsed_chat_data.json
+sentiment_distribution.csv
+user_interests.csv
+user_similarities.csv
