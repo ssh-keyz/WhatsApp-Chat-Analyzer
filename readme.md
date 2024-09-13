@@ -17,6 +17,7 @@ This project aims to analyze chat data from a text file to extract user interest
 - spaCy
 - scikit-learn
 - Regular expressions (re module)
+- emoji library
 
 ### Key Components
 
@@ -57,32 +58,43 @@ This project aims to analyze chat data from a text file to extract user interest
    python -m spacy download en_core_web_trf
    ```
 
-5. Make sure you have a CUDA-compatible GPU and the appropriate CUDA toolkit installed.
-
-6. Install the CUDA-enabled version of spaCy:
-   ```
-   pip install -U spacy[cuda113]
-   ```
-   (Replace `cuda113` with your CUDA version if different)
-
 ## Usage
+
+### Chat Parser
 
 1. Prepare your chat data file in the required format (see `sample_chat.txt` for an example).
 
-2. Run the analysis script:
+2. Run the chat parser script:
+   ```
+   python chat_parser.py path/to/your/chat_file.txt
+   ```
+
+3. View the results in the console output. The script will provide the following statistics:
+   - Total number of messages
+   - Messages per user
+   - Date range of the chat
+   - Top 5 most active users
+   - Average time between messages for each user
+   - Most common words used in the chat
+
+4. The parsed data will also be saved to a JSON file named `parsed_chat_data.json` in the same directory.
+
+### Full Analysis
+
+1. Run the analysis script:
    ```
    python analyze_chat.py path/to/your/chat_file.txt
    ```
 
-3. View the results in the console output. (Future versions may include data visualization or export options.)
+2. View the results in the console output. (Future versions may include data visualization or export options.)
 
 ## Project Structure
 
 ```
 chat-analysis-project/
 │
-├── analyze_chat.py        # Main script for running the analysis
-├── chat_parser.py         # Module for parsing the chat file
+├── analyze_chat.py        # Main script for running the full analysis
+├── chat_parser.py         # Module for parsing the chat file and basic statistics
 ├── interest_extractor.py  # Module for extracting user interests
 ├── similarity_calculator.py  # Module for calculating user similarities
 ├── requirements.txt       # List of Python package dependencies
