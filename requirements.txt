@@ -15,3 +15,6 @@ tqdm==4.64.0
 
 # Web framework (optional, for potential future web interface)
 flask==2.0.3
+
+spacy[cuda113]
+https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.2.0/en_core_web_trf-3.2.0.tar.gz

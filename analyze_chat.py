@@ -3,6 +3,7 @@ import csv
 from chat_parser import parse_chat_file
 from interest_extractor import extract_interests
 from similarity_calculator import calculate_user_similarity
+from interest_extractor import export_user_interests_to_csv
 from collections import defaultdict
 import json
 
@@ -69,7 +70,9 @@ def main():
         # Export similarity scores to CSV
         csv_output_path = 'user_similarities.csv'
         export_similarities_to_csv(similarities, csv_output_path)
-
+        # Export user interests to CSV
+        user_interests_csv_path = 'user_interests.csv'
+        export_user_interests_to_csv(user_interests, user_interests_csv_path)
     except FileNotFoundError:
         print(f"Error: File '{chat_file_path}' not found.")
         sys.exit(1)

@@ -54,8 +54,16 @@ This project aims to analyze chat data from a text file to extract user interest
 
 4. Download the spaCy model:
    ```
-   python -m spacy download en_core_web_sm
+   python -m spacy download en_core_web_trf
    ```
+
+5. Make sure you have a CUDA-compatible GPU and the appropriate CUDA toolkit installed.
+
+6. Install the CUDA-enabled version of spaCy:
+   ```
+   pip install -U spacy[cuda113]
+   ```
+   (Replace `cuda113` with your CUDA version if different)
 
 ## Usage
 

@@ -1,9 +1,20 @@
 import spacy
+import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-nlp = spacy.load("en_core_web_sm")
+# Replace spacy.prefer_gpu() with:
+if torch.backends.mps.is_available():
+    spacy.require_gpu()
+    torch.set_default_device('mps')
+elif torch.cuda.is_available():
+    spacy.require_gpu()
+    torch.set_default_device('cuda')
+else:
+    spacy.require_cpu()
+
+nlp = spacy.load("en_core_web_trf")
 
 def calculate_user_similarity(user1_interests, user2_interests):
     """

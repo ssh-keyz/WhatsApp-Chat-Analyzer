@@ -2,9 +2,21 @@ import spacy
 from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import csv
+import torch
+
+# Replace spacy.prefer_gpu() with:
+if torch.backends.mps.is_available():
+    spacy.require_gpu()
+    torch.set_default_device('mps')
+elif torch.cuda.is_available():
+    spacy.require_gpu()
+    torch.set_default_device('cuda')
+else:
+    spacy.require_cpu()
 
 # Load spaCy model
-nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("en_core_web_trf")
 
 def extract_interests(user_messages, top_n=10):
     # Combine all messages for the user
@@ -59,3 +71,11 @@ def calculate_user_similarity(user1_interests, user2_interests):
     vector2 = [1 if word in user2_interests['top_words'] else 0 for word in all_interests]
 
     return cosine_similarity([vector1], [vector2])[0][0]
+
+def export_user_interests_to_csv(user_interests, output_file='user_interests.csv'):
+    with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['User', 'Top Words', 'Sentiment'])
+        for user, interests in user_interests.items():
+            writer.writerow([user, ', '.join(interests['top_words']), interests['sentiment']])
+    print(f"User interests exported to {output_file}")
