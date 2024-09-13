@@ -1,11 +1,33 @@
 import sys
 import csv
+import json
+from collections import Counter
 from chat_parser import parse_chat_file
-from interest_extractor import extract_interests
+from interest_extractor import extract_interests, calculate_sentiment
 from similarity_calculator import calculate_user_similarity
 from interest_extractor import export_user_interests_to_csv
 from collections import defaultdict
-import json
+import spacy
+
+# Load the larger spaCy model at the beginning of the script
+nlp = spacy.load("en_core_web_trf")
+
+def analyze_sentiment_distribution(chat_data):
+    sentiments = []
+    for user, messages in chat_data.items():
+        for msg in messages:
+            doc = nlp(msg['message'])  # Process the text with spaCy
+            sentiment = calculate_sentiment(doc)  # Pass the spaCy Doc object
+            sentiments.append(sentiment)
+    return Counter(sentiments)
+
+def export_sentiment_distribution(distribution, output_file='sentiment_distribution.csv'):
+    with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Sentiment', 'Count'])
+        for sentiment, count in distribution.items():
+            writer.writerow([sentiment, count])
+    print(f"Sentiment distribution exported to {output_file}")
 
 def analyze_chat_data(chat_data):
     user_interests = {}
@@ -20,7 +42,9 @@ def analyze_chat_data(chat_data):
             similarity = calculate_user_similarity(user_interests[user1], user_interests[user2])
             similarities[(user1, user2)] = similarity
 
-    return user_interests, similarities
+    sentiment_distribution = analyze_sentiment_distribution(chat_data)
+
+    return user_interests, similarities, sentiment_distribution
 
 def print_results(user_interests, similarities):
     print("User Interests:")
@@ -60,19 +84,23 @@ def main():
 
     try:
         chat_data = parse_chat_file(chat_file_path)
-        user_interests, similarities = analyze_chat_data(chat_data)
+        user_interests, similarities, sentiment_distribution = analyze_chat_data(chat_data)
 
         print_results(user_interests, similarities)
+        print("\nSentiment Distribution:")
+        for sentiment, count in sentiment_distribution.items():
+            print(f"{sentiment}: {count}")
 
         if output_file_path:
             export_results(user_interests, similarities, output_file_path)
 
         # Export similarity scores to CSV
-        csv_output_path = 'user_similarities.csv'
-        export_similarities_to_csv(similarities, csv_output_path)
+        export_similarities_to_csv(similarities, 'user_similarities.csv')
         # Export user interests to CSV
-        user_interests_csv_path = 'user_interests.csv'
-        export_user_interests_to_csv(user_interests, user_interests_csv_path)
+        export_user_interests_to_csv(user_interests, 'user_interests.csv')
+        # Export sentiment distribution to CSV
+        export_sentiment_distribution(sentiment_distribution, 'sentiment_distribution.csv')
+
     except FileNotFoundError:
         print(f"Error: File '{chat_file_path}' not found.")
         sys.exit(1)
