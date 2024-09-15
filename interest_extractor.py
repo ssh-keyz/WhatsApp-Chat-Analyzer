@@ -5,48 +5,53 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
 import csv
 import torch
-from transformers import RobertaTokenizer, RobertaForSequenceClassification, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import XLNetTokenizer, XLNetForSequenceClassification, AutoTokenizer, AutoModelForSequenceClassification
 from scipy.special import softmax
 import numpy as np
+import warnings
+import os
 
-# GPU setup
-if torch.backends.mps.is_available():
-    spacy.require_gpu()
-    torch.set_default_device('mps')
-elif torch.cuda.is_available():
-    spacy.require_gpu()
-    torch.set_default_device('cuda')
-else:
+# Suppress warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
+# Force CPU usage
+def setup_device():
     spacy.require_cpu()
+    print("Using CPU for both PyTorch and spaCy")
+    return 'cpu'
+
+device = setup_device()
 
 # Load spaCy model
 nlp = spacy.load("en_core_web_trf")
 
+# Update SentimentAnalyzer to use CPU if GPU fails
 class SentimentAnalyzer:
-    def __init__(self, model_name="roberta-large"):
-        self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
-        self.model = RobertaForSequenceClassification.from_pretrained(model_name)
-        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    def __init__(self, model_name="distilbert-base-uncased-finetuned-sst-2-english"):   
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.device = 'cpu'
         self.model.to(self.device)
 
     def calculate_sentiment(self, doc):
         text = " ".join([token.text for token in doc])
-        encoded_input = self.tokenizer(text, return_tensors='pt', truncation=True, max_length=512).to(self.device)
-        
-        with torch.no_grad():
-            output = self.model(**encoded_input)
-        
-        scores = output.logits[0].cpu().numpy()
-        scores = softmax(scores)
-        
-        sentiment_score = scores[1] - scores[0]
-        
-        if sentiment_score > 0.2:
-            return "Positive", sentiment_score
-        elif sentiment_score < -0.2:
-            return "Negative", sentiment_score
-        else:
-            return "Neutral", sentiment_score
+        try:
+            encoded_input = self.tokenizer(text, return_tensors='pt', truncation=True, max_length=512)
+            with torch.no_grad():
+                output = self.model(**encoded_input)
+            scores = output.logits[0].numpy()
+            scores = softmax(scores)
+            sentiment_score = scores[1] - scores[0]
+            if sentiment_score > 0.1:
+                return "Positive", sentiment_score
+            elif sentiment_score < -0.1:
+                return "Negative", sentiment_score
+            else:
+                return "Neutral", sentiment_score
+        except Exception as e:
+            print(f"Error in sentiment analysis: {str(e)}")
+            return "Error", 0.0
 
 sentiment_analyzer = SentimentAnalyzer()
 
@@ -168,3 +173,13 @@ def analyze_chat(chat_data):
 # chat_data = parse_chat_file('chat.txt')  # You need to implement this function
 # results = analyze_chat(chat_data)
 # export_user_interests_to_csv(results['user_interests'])
+
+def cleanup():
+    torch.cuda.empty_cache()
+
+if __name__ == "__main__":
+    # Your main code here
+    # ...
+    
+    # Call cleanup at the end
+    cleanup()
