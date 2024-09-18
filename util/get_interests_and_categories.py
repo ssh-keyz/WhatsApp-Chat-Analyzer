@@ -5,6 +5,7 @@ import json
 import csv
 from datetime import datetime
 import re
+import time
 
 # Custom date parser function
 def custom_date_parser(date_string):
@@ -158,34 +159,74 @@ def get_response(prompt, max_tokens):
             print(f"Response content: {response.text}")
         return None
 
+def chunk_messages(messages, chunk_size=50):
+    """Split messages into chunks of specified size."""
+    return [messages[i:i + chunk_size] for i in range(0, len(messages), chunk_size)]
+
 def process_user(user):
+    start_time = time.time()
+    api_calls = 0
+    
+    print(f"Processing user: {user}")
     messages = get_user_messages(user)
     
-    # Tag messages
-    tagging_prompt = create_tagging_prompt(messages)
-    tagged_messages = get_response(tagging_prompt, max_tokens=2000)
+    if not messages:
+        print(f"No valid messages found for user: {user}")
+        return None
+    
+    print(f"Found {len(messages)} messages for user: {user}")
+    
+    # Tag messages in chunks
+    tagged_messages = []
+    for chunk in chunk_messages(messages):
+        chunk_start = time.time()
+        tagging_prompt = create_tagging_prompt(chunk)
+        chunk_tags = get_response(tagging_prompt, max_tokens=2000)
+        api_calls += 1
+        chunk_time = time.time() - chunk_start
+        print(f"Chunk processing time: {chunk_time:.2f} seconds")
+        if chunk_tags:
+            tagged_messages.extend(chunk_tags)
+        else:
+            print(f"Failed to tag a chunk of messages for user: {user}")
     
     if not tagged_messages:
+        print(f"Failed to tag any messages for user: {user}")
         return None
     
     # Filter topic messages
     topic_messages = [msg['message'] for msg in tagged_messages if msg['category'] == 'Topic']
     
     if not topic_messages:
+        total_time = time.time() - start_time
+        print(f"No topic messages found for user {user}. Total processing time: {total_time:.2f} seconds")
+        print(f"Total API calls for user {user}: {api_calls}")
         return {
             'user': user,
             'tagged_messages': tagged_messages,
-            'interests_data': None
+            'interests_data': None,
+            'processing_time': total_time,
+            'api_calls': api_calls
         }
     
     # Generate interests based on topic messages
-    interests_prompt = create_interests_prompt(topic_messages)
+    interests_start = time.time()
+    interests_prompt = create_interests_prompt(topic_messages[:100])  # Limit to 100 topic messages
     interests_data = get_response(interests_prompt, max_tokens=1000)
+    api_calls += 1
+    interests_time = time.time() - interests_start
+    print(f"Interests generation time: {interests_time:.2f} seconds")
+    
+    total_time = time.time() - start_time
+    print(f"Total processing time for user {user}: {total_time:.2f} seconds")
+    print(f"Total API calls for user {user}: {api_calls}")
     
     return {
         'user': user,
         'tagged_messages': tagged_messages,
-        'interests_data': interests_data
+        'interests_data': interests_data,
+        'processing_time': total_time,
+        'api_calls': api_calls
     }
 
 # Process all users
@@ -193,7 +234,6 @@ all_users = df['user'].unique()
 user_data = {}
 
 for user in all_users:
-    print(f"Processing user: {user}")
     result = process_user(user)
     if result:
         user_data[user] = result
@@ -231,3 +271,11 @@ percentage_with_interests = (users_with_interests / total_users) * 100 if total_
 print(f"Total Users Processed: {total_users}")
 print(f"Users with Interests: {users_with_interests}")
 print(f"Percentage of Users with Interests: {percentage_with_interests:.2f}%")
+
+# After processing all users:
+total_processing_time = sum(data['processing_time'] for data in user_data.values() if data)
+total_api_calls = sum(data['api_calls'] for data in user_data.values() if data)
+users_with_interests = sum(1 for data in user_data.values() if data and data['interests_data'])
+print(f"Total processing time for all users: {total_processing_time:.2f} seconds")
+print(f"Total API calls for all users: {total_api_calls}")
+print(f"Users with generated interests: {users_with_interests}")
