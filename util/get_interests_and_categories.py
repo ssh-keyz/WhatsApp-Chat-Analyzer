@@ -6,6 +6,7 @@ import csv
 from datetime import datetime
 import re
 import time
+import os
 
 # Custom date parser function
 def custom_date_parser(date_string):
@@ -47,9 +48,10 @@ def clean_message(message):
     cleaned = re.sub(r'<attached: .*?>', '', cleaned)
     return cleaned.strip()
 
-def get_user_messages(user):
+def get_user_messages(user, max_messages=1000):
     user_messages = df[df['user'] == user]['message'].dropna().tolist()
-    return [clean_message(msg) for msg in user_messages if clean_message(msg)]
+    cleaned_messages = [clean_message(msg) for msg in user_messages if clean_message(msg)]
+    return cleaned_messages[:max_messages]  # Limit the number of messages
 
 def create_tagging_prompt(messages):
     schema = {
@@ -58,7 +60,7 @@ def create_tagging_prompt(messages):
             "type": "object",
             "properties": {
                 "message": {"type": "string"},
-                "category": {"type": "string", "enum": ["Topic", "Generic", "Question", "Personal", "Announcement", "Other"]}
+                "category": {"type": "string", "enum": ["Topic", "Event", "Generic", "Question", "Personal", "Announcement", "Too Many Tokens", "Other"]}
             },
             "required": ["message", "category"]
         }
@@ -71,7 +73,7 @@ You are a helpful assistant that categorizes messages. Here's the json schema yo
 </schema><|im_end|>"""
 
     user_message = f"""<|im_start|>user
-Categorize each of the following messages as either "Topic" (related to a specific subject or interest), "Generic" (general conversation), "Question" (asking for information), "Personal" (about the user's life), "Announcement" (sharing news or updates), or "Other" (if it doesn't fit the previous categories). Return the categorizations in JSON format according to the provided schema.
+Categorize each of the following messages as either "Topic" (related to a specific non-person-subject, location, hobby, activity, or interest. A message like 'thinking of having a chill board game spooky movie night at [users] place', this is a topic), "Generic" (general conversation), "Event" (mentions that they are on the way to an event, plan to go, etc. if an event is interest based, this would be the Topic category), "Personal" (about the user's life unless they mention a topic, location, or interest), "Announcement" (sharing news or updates, a person was added, a person joined from the community, a person left the community, a person was removed, a person left), "Too Many Tokens" (if the message is too long to process), or "Other" (if it doesn't fit the previous categories). Return the categorizations in JSON format according to the provided schema.
 
 Messages:
 {chr(10).join(f"- {msg}" for msg in messages)}
@@ -124,7 +126,8 @@ def get_response(prompt, max_tokens):
         "model": "Hermes-3-Llama-3.1-8B.Q8_0.gguf",
         "messages": prompt,
         "max_tokens": max_tokens,
-        "temperature": 0.3
+        "temperature": 0.3,
+        "stream": False
     }
     
     headers = {
@@ -136,7 +139,7 @@ def get_response(prompt, max_tokens):
         response.raise_for_status()
         result = response.json()
         json_response = result['choices'][0]['message']['content']
-        
+        print(json_response)
         # Try to find valid JSON within the response
         try:
             start = json_response.index('[')
@@ -159,7 +162,7 @@ def get_response(prompt, max_tokens):
             print(f"Response content: {response.text}")
         return None
 
-def chunk_messages(messages, chunk_size=50):
+def chunk_messages(messages, chunk_size=7500):
     """Split messages into chunks of specified size."""
     return [messages[i:i + chunk_size] for i in range(0, len(messages), chunk_size)]
 
@@ -174,28 +177,53 @@ def process_user(user):
         print(f"No valid messages found for user: {user}")
         return None
     
-    print(f"Found {len(messages)} messages for user: {user}")
+    print(messages)
+    print(f"Processing {len(messages)} messages for user: {user}")
     
-    # Tag messages in chunks
-    tagged_messages = []
-    for chunk in chunk_messages(messages):
-        chunk_start = time.time()
-        tagging_prompt = create_tagging_prompt(chunk)
-        chunk_tags = get_response(tagging_prompt, max_tokens=2000)
-        api_calls += 1
-        chunk_time = time.time() - chunk_start
-        print(f"Chunk processing time: {chunk_time:.2f} seconds")
-        if chunk_tags:
-            tagged_messages.extend(chunk_tags)
+    # Check if tagged messages file exists
+    tagged_messages_file = f'tagged_messages_{user}.json'
+    if os.path.exists(tagged_messages_file):
+        print(f"Loading tagged messages from file for user: {user}")
+        with open(tagged_messages_file, 'r') as f:
+            tagged_messages = json.load(f)
+    else:
+        # Process messages based on count
+        if len(messages) <= 100:
+            # Process all messages in one go
+            tagging_prompt = create_tagging_prompt(messages)
+            tagged_messages = get_response(tagging_prompt, max_tokens=40000)
+            api_calls += 1
         else:
-            print(f"Failed to tag a chunk of messages for user: {user}")
+            # Use chunking for users with more messages
+            tagged_messages = []
+            for chunk in chunk_messages(messages):
+                chunk_start = time.time()
+                tagging_prompt = create_tagging_prompt(chunk)
+                chunk_tags = get_response(tagging_prompt, max_tokens=40000)
+                api_calls += 1
+                chunk_time = time.time() - chunk_start
+                print(f"Chunk processing time: {chunk_time:.2f} seconds")
+                if chunk_tags:
+                    tagged_messages.extend(chunk_tags)
+                else:
+                    print(f"Failed to tag a chunk of messages for user: {user}")
+        
+        # Save tagged messages to file
+        with open(tagged_messages_file, 'w') as f:
+            json.dump(tagged_messages, f)
     
     if not tagged_messages:
         print(f"Failed to tag any messages for user: {user}")
         return None
     
-    # Filter topic messages
-    topic_messages = [msg['message'] for msg in tagged_messages if msg['category'] == 'Topic']
+    # Process tagged messages
+    message_counts = {'Topic': 0, 'Generic': 0, 'Question': 0, 'Personal': 0, 'Announcement': 0, 'Other': 0}
+    topic_messages = []
+    
+    for msg in tagged_messages:
+        message_counts[msg['category']] += 1
+        if msg['category'] == 'Topic':
+            topic_messages.append(msg['message'])
     
     if not topic_messages:
         total_time = time.time() - start_time
@@ -203,7 +231,7 @@ def process_user(user):
         print(f"Total API calls for user {user}: {api_calls}")
         return {
             'user': user,
-            'tagged_messages': tagged_messages,
+            'message_counts': message_counts,
             'interests_data': None,
             'processing_time': total_time,
             'api_calls': api_calls
@@ -212,7 +240,7 @@ def process_user(user):
     # Generate interests based on topic messages
     interests_start = time.time()
     interests_prompt = create_interests_prompt(topic_messages[:100])  # Limit to 100 topic messages
-    interests_data = get_response(interests_prompt, max_tokens=1000)
+    interests_data = get_response(interests_prompt, max_tokens=80000)
     api_calls += 1
     interests_time = time.time() - interests_start
     print(f"Interests generation time: {interests_time:.2f} seconds")
@@ -223,59 +251,62 @@ def process_user(user):
     
     return {
         'user': user,
-        'tagged_messages': tagged_messages,
+        'message_counts': message_counts,
         'interests_data': interests_data,
         'processing_time': total_time,
         'api_calls': api_calls
     }
 
-# Process all users
+def process_all_users(all_users):
+    fieldnames = ['User', 'Topic_Count', 'Generic_Count', 'Question_Count', 'Personal_Count', 'Announcement_Count', 'Other_Count', 
+                  'Interest1', 'Interest2', 'Interest3', 'Interest4', 'Interest5', 'Suggested_Group', 'Processing_Time', 'API_Calls']
+    
+    # Write the header once
+    with open('user_data_summary.csv', 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+    
+    total_processing_time = 0
+    total_api_calls = 0
+    users_with_interests = 0
+    
+    for user in all_users:
+        result = process_user(user)
+        if result:
+            interests = result['interests_data'] or {}
+            
+            # Open the file in append mode, write the row, and close it
+            with open('user_data_summary.csv', 'a', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writerow({
+                    'User': user,
+                    'Topic_Count': result['message_counts']['Topic'],
+                    'Generic_Count': result['message_counts']['Generic'],
+                    'Question_Count': result['message_counts']['Question'],
+                    'Personal_Count': result['message_counts']['Personal'],
+                    'Announcement_Count': result['message_counts']['Announcement'],
+                    'Other_Count': result['message_counts']['Other'],
+                    'Interest1': interests.get('interest1', ''),
+                    'Interest2': interests.get('interest2', ''),
+                    'Interest3': interests.get('interest3', ''),
+                    'Interest4': interests.get('interest4', ''),
+                    'Interest5': interests.get('interest5', ''),
+                    'Suggested_Group': interests.get('suggested_group', ''),
+                    'Processing_Time': result['processing_time'],
+                    'API_Calls': result['api_calls']
+                })
+            
+            total_processing_time += result['processing_time']
+            total_api_calls += result['api_calls']
+            if result['interests_data']:
+                users_with_interests += 1
+        
+        print(f"Processed user: {user}")
+    
+    print(f"Total processing time for all users: {total_processing_time:.2f} seconds")
+    print(f"Total API calls for all users: {total_api_calls}")
+    print(f"Users with generated interests: {users_with_interests}")
+
+# Main execution
 all_users = df['user'].unique()
-user_data = {}
-
-for user in all_users:
-    result = process_user(user)
-    if result:
-        user_data[user] = result
-        print(f"Completed processing for user: {user}")
-    else:
-        print(f"Failed to process user: {user}")
-
-# Write data to CSV
-with open('../chats/user_data_with_tags_and_interests.csv', 'w', newline='', encoding='utf-8') as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerow(['User', 'Message', 'Category', 'Interest 1', 'Interest 2', 'Interest 3', 'Interest 4', 'Interest 5', 'Suggested Group', 'Explanation'])
-    for user, data in user_data.items():
-        interests = data['interests_data'] or {}
-        for message in data['tagged_messages']:
-            writer.writerow([
-                user,
-                message['message'],
-                message['category'],
-                interests.get('interest1', ''),
-                interests.get('interest2', ''),
-                interests.get('interest3', ''),
-                interests.get('interest4', ''),
-                interests.get('interest5', ''),
-                interests.get('suggested_group', ''),
-                interests.get('explanation', '')
-            ])
-
-print("All user data has been written to user_data_with_tags_and_interests.csv")
-
-# Calculate statistics
-total_users = len(user_data)
-users_with_interests = sum(1 for data in user_data.values() if data['interests_data'])
-percentage_with_interests = (users_with_interests / total_users) * 100 if total_users > 0 else 0
-
-print(f"Total Users Processed: {total_users}")
-print(f"Users with Interests: {users_with_interests}")
-print(f"Percentage of Users with Interests: {percentage_with_interests:.2f}%")
-
-# After processing all users:
-total_processing_time = sum(data['processing_time'] for data in user_data.values() if data)
-total_api_calls = sum(data['api_calls'] for data in user_data.values() if data)
-users_with_interests = sum(1 for data in user_data.values() if data and data['interests_data'])
-print(f"Total processing time for all users: {total_processing_time:.2f} seconds")
-print(f"Total API calls for all users: {total_api_calls}")
-print(f"Users with generated interests: {users_with_interests}")
+process_all_users(all_users)
