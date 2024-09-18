@@ -23,7 +23,8 @@ def setup_device():
     print("Using CPU for both PyTorch and spaCy")
     return 'cpu'
 
-device = setup_device()
+# device = setup_device()
+device = torch.device("mps") 
 
 # Load spaCy model
 nlp = spacy.load("en_core_web_trf")
@@ -33,7 +34,8 @@ class SentimentAnalyzer:
     def __init__(self, model_name="distilbert-base-uncased-finetuned-sst-2-english"):   
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        self.device = 'cpu'
+        # self.device = 'cpu'
+        self.device = 'mps'
         self.model.to(self.device)
 
     def calculate_sentiment(self, doc):
@@ -42,7 +44,7 @@ class SentimentAnalyzer:
             encoded_input = self.tokenizer(text, return_tensors='pt', truncation=True, max_length=512)
             with torch.no_grad():
                 output = self.model(**encoded_input)
-            scores = output.logits[0].numpy()
+            scores = output.logits[0].cpu().numpy()
             scores = softmax(scores)
             sentiment_score = scores[1] - scores[0]
             if sentiment_score > 0.1:
@@ -85,7 +87,7 @@ def extract_interests(user_messages, top_n=10):
     doc = nlp(text)
 
     # Extract nouns, proper nouns, and entities as potential interests
-    interests = [token.text.lower() for token in doc if token.pos_ in ['NOUN', 'PROPN']]
+    interests = [token.text.lower() for token in doc if token.pos_ in ['PERSON', 'ORG', 'PRODUCT', 'EVENT', 'NOUN', 'PROPN', 'GPE', 'LOC', 'MISC']]
     interests.extend([ent.text.lower() for ent in doc.ents])
 
     # Use TF-IDF to identify important words

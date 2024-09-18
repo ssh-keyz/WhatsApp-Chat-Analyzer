@@ -1,4 +1,4 @@
-# python chat_parser.py <path_to_your_chat_log>
+import csv
 import re
 from datetime import datetime
 from collections import defaultdict
@@ -6,68 +6,34 @@ import emoji
 
 def parse_chat_file(file_path):
     chat_data = defaultdict(list)
-    date_pattern = r'\[(\d{1,2}/\d{1,2}/\d{2,4}),\s(\d{1,2}:\d{2}:\d{2}\s?(?:AM|PM)?)\]'
-    user_pattern = r'(.*?):'
-
+    
     with open(file_path, 'r', encoding='utf-8') as file:
-        for line_number, line in enumerate(file, 1):
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
             try:
-                date_match = re.match(date_pattern, line)
-                if date_match:
-                    date_str, time_str = date_match.groups()
-                    
-                    # Handle different date formats
-                    try:
-                        if len(date_str.split('/')[-1]) == 2:
-                            date_format = "%m/%d/%y"
-                        else:
-                            date_format = "%m/%d/%Y"
-                        
-                        # Handle different time formats
-                        if 'AM' in time_str or 'PM' in time_str:
-                            time_format = "%I:%M:%S %p"
-                        else:
-                            time_format = "%H:%M:%S"
-                        
-                        timestamp = datetime.strptime(f"{date_str} {time_str}", f"{date_format} {time_format}")
-                    except ValueError as e:
-                        print(f"Warning: Unable to parse date/time on line {line_number}: {e}")
-                        continue
-                    
-                    user_match = re.search(user_pattern, line[date_match.end():].strip())
-                    if user_match:
-                        user = user_match.group(1).strip()
-                        message = line[date_match.end() + user_match.end() + 1:].strip()
-                        
-                        # Skip messages about joining, adding, or requesting to join
-                        if any(action in message.lower() for action in ['joined', 'added', 'requested to join']):
-                            continue
-                        
-                        chat_data[user].append({
-                            'timestamp': timestamp,
-                            'message': clean_message(message),
-                            'line_number': line_number
-                        })
-                    else:
-                        # Handle system messages or other non-user messages
-                        message = line[date_match.end():].strip()
-                        
-                        # Skip system messages about joining, adding, or requesting to join
-                        if any(action in message.lower() for action in ['joined', 'added', 'requested to join']):
-                            continue
-                        
-                        chat_data['SYSTEM'].append({
-                            'timestamp': timestamp,
-                            'message': clean_message(message),
-                            'line_number': line_number
-                        })
-                else:
-                    # Handle lines without a timestamp (e.g., continued messages)
-                    if chat_data:
-                        last_user = list(chat_data.keys())[-1]
-                        chat_data[last_user][-1]['message'] += f" {clean_message(line.strip())}"
+                date_time_str = row['date_time']
+                user = row['user']
+                message = row['message']
+
+                # Parse the date_time string
+                try:
+                    timestamp = datetime.strptime(date_time_str, "%m/%d/%y %I:%M:%S %p")
+                except ValueError:
+                    # Try alternative format if the first one fails
+                    timestamp = datetime.strptime(date_time_str, "%m/%d/%Y %I:%M:%S %p")
+
+                # Skip messages about joining, adding, or requesting to join
+                if any(action in message.lower() for action in ['joined', 'added', 'requested to join']):
+                    continue
+
+                chat_data[user].append({
+                    'timestamp': timestamp,
+                    'message': clean_message(message),
+                    'line_number': csv_reader.line_num
+                })
+
             except Exception as e:
-                print(f"Warning: Error processing line {line_number}: {e}")
+                print(f"Warning: Error processing line {csv_reader.line_num}: {e}")
 
     return dict(chat_data)
 

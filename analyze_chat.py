@@ -2,7 +2,7 @@ import sys
 import csv
 import json
 from collections import Counter
-from chat_parser import parse_chat_file
+from chat_preprocessor import ChatPreprocessor
 from interest_extractor import extract_interests, calculate_sentiment
 from similarity_calculator import calculate_user_similarity
 from interest_extractor import export_user_interests_to_csv
@@ -14,6 +14,7 @@ nlp = spacy.load("en_core_web_trf")
 
 def analyze_sentiment_distribution(chat_data):
     sentiments = []
+    print(chat_data)
     for user, messages in chat_data.items():
         for msg in messages:
             doc = nlp(msg['message'])  # Process the text with spaCy
@@ -31,9 +32,9 @@ def export_sentiment_distribution(distribution, output_file='sentiment_distribut
 
 def analyze_chat_data(chat_data):
     user_interests = {}
-    for user, messages in chat_data.items():
-        if messages:  # Check if the user has any messages
-            user_interests[user] = extract_interests(messages)
+    for user, message in chat_data.items():
+        if message:  # Check if the user has any messages
+            user_interests[user] = extract_interests(message)
         else:
             user_interests[user] = {'top_words': [], 'sentiment': 'N/A'}  # Add users with no messages
 
@@ -94,8 +95,16 @@ def main():
     output_file_path = sys.argv[2] if len(sys.argv) > 2 else None
 
     try:
-        chat_data = parse_chat_file(chat_file_path)
-        user_interests, similarities, sentiment_distribution = analyze_chat_data(chat_data)
+        # Create an instance of ChatPreprocessor
+        preprocessor = ChatPreprocessor()
+
+        # Use the parse_chat_file method
+        # preprocessor.parse_chat_file('./proc/formatted_chat.csv')
+        # preprocessor.parse_chat_file('./chats/_chat2.txt')
+        preprocessor.parse_chat_file('./proc/formatted_chat.csv')
+
+        chat_data = preprocessor.chat_data
+        user_interests, similarities, sentiment_distribution = analyze_chat_data(preprocessor.chat_data)
 
         print_results(user_interests, similarities)
         print("\nSentiment Distribution:")
@@ -117,7 +126,11 @@ def main():
         sys.exit(1)
     except Exception as e:
         print(f"An error occurred: {str(e)}")
-        sys.exit(1)
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error occurred in file: {__file__}")
+        print(f"Traceback:")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
