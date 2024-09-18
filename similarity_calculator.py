@@ -5,15 +5,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 # Replace spacy.prefer_gpu() with:
-if torch.backends.mps.is_available():
-    spacy.require_gpu()
-    torch.set_default_device('mps')
-elif torch.cuda.is_available():
-    spacy.require_gpu()
-    torch.set_default_device('cuda')
-else:
-    spacy.require_cpu()
-
+# if torch.backends.mps.is_available():
+#     spacy.require_gpu()
+#     torch.set_default_device('mps')
+# elif torch.cuda.is_available():
+#     spacy.require_gpu()
+#     torch.set_default_device('cuda')
+# else:
+#     spacy.require_cpu()
+torch.set_default_device('mps')
 nlp = spacy.load("en_core_web_trf")
 
 def calculate_user_similarity(user1_interests, user2_interests):
