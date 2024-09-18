@@ -67,7 +67,7 @@ def create_tagging_prompt(messages):
     }
     
     system_message = f"""<|im_start|>system
-You are a helpful assistant that categorizes messages. Here's the json schema you must adhere to:
+You are Umi, a social data scientist that categorizes messages. Here's the json schema you must adhere to:
 <schema>
 {json.dumps(schema, indent=2)}
 </schema><|im_end|>"""
@@ -102,7 +102,7 @@ def create_interests_prompt(topic_messages):
     }
     
     system_message = f"""<|im_start|>system
-You are a helpful assistant that analyzes user interests. Here's the json schema you must adhere to:
+You are Umi, a data analyst that analyzes user interests. Here's the json schema you must adhere to:
 <schema>
 {json.dumps(schema, indent=2)}
 </schema><|im_end|>"""
