@@ -153,13 +153,43 @@ def get_response(prompt, max_tokens):
                 valid_json = json_response[start:end]
                 return json.loads(valid_json)
             except (ValueError, json.JSONDecodeError):
-                print(f"Invalid JSON. Raw response: {json_response}")
-                return None
+                print(f"Invalid JSON. Attempting to fix with AI...")
+                # fixed_json = fix_json_with_ai(json_response)
+                # if fixed_json:
+                #     return json.loads(fixed_json)
+                # else:
+                #     print(f"Failed to fix JSON. Raw response: {json_response}")
+                #     return None
         
     except requests.exceptions.RequestException as e:
         print(f"Request error: {str(e)}")
         if response.text:
             print(f"Response content: {response.text}")
+        return None
+
+def fix_json_with_ai(invalid_json):
+    fix_prompt = [
+        {"role": "system", "content": "You are a helpful assistant that fixes and completes JSON responses."},
+        {"role": "user", "content": f"The following JSON is invalid or incomplete. Please fix and complete it, ensuring it's valid JSON. Only return the JSON, no other text. Every '[' should have a corresponding ']'. Every '{' should have a corresponding '}':\n\n{invalid_json}"}
+    ]
+    
+    try:
+        response = requests.post(API_ENDPOINT, json={
+            "model": "Hermes-3-Llama-3.1-8B.Q8_0.gguf",
+            "messages": fix_prompt,
+            "max_tokens": 1000,
+            "temperature": 0.3,
+            "stream": False
+        }, headers={"Content-Type": "application/json"})
+        response.raise_for_status()
+        result = response.json()
+        fixed_json = result['choices'][0]['message']['content']
+        
+        # Attempt to parse the fixed JSON
+        json.loads(fixed_json)
+        return fixed_json
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        print(f"Error fixing JSON: {str(e)}")
         return None
 
 def chunk_messages(messages, chunk_size=7500):
@@ -191,7 +221,7 @@ def process_user(user):
         if len(messages) <= 100:
             # Process all messages in one go
             tagging_prompt = create_tagging_prompt(messages)
-            tagged_messages = get_response(tagging_prompt, max_tokens=40000)
+            tagged_messages = get_response(tagging_prompt, max_tokens=50000)
             api_calls += 1
         else:
             # Use chunking for users with more messages
@@ -217,13 +247,16 @@ def process_user(user):
         return None
     
     # Process tagged messages
-    message_counts = {'Topic': 0, 'Generic': 0, 'Question': 0, 'Personal': 0, 'Announcement': 0, 'Other': 0}
+    message_counts = {'Topic': 0, 'Generic': 0, 'Question': 0, 'Discussion': 0, 'Conversation': 0, 'Personal': 0, 'Event': 0, 'Announcement': 0, 'Too Many Tokens': 0, 'Other': 0}
     topic_messages = []
     
     for msg in tagged_messages:
-        message_counts[msg['category']] += 1
-        if msg['category'] == 'Topic':
-            topic_messages.append(msg['message'])
+        if isinstance(msg, dict) and 'category' in msg:
+            message_counts[msg['category']] += 1
+            if msg['category'] == 'Topic':
+                topic_messages.append(msg['message'])
+        else:
+            print(f"Warning: Unexpected message format for user {user}: {msg}")
     
     if not topic_messages:
         total_time = time.time() - start_time
@@ -240,7 +273,7 @@ def process_user(user):
     # Generate interests based on topic messages
     interests_start = time.time()
     interests_prompt = create_interests_prompt(topic_messages[:100])  # Limit to 100 topic messages
-    interests_data = get_response(interests_prompt, max_tokens=80000)
+    interests_data = get_response(interests_prompt, max_tokens=100000)
     api_calls += 1
     interests_time = time.time() - interests_start
     print(f"Interests generation time: {interests_time:.2f} seconds")
@@ -258,19 +291,33 @@ def process_user(user):
     }
 
 def process_all_users(all_users):
-    fieldnames = ['User', 'Topic_Count', 'Generic_Count', 'Question_Count', 'Personal_Count', 'Announcement_Count', 'Other_Count', 
+    fieldnames = ['User', 'Topic_Count', 'Generic_Count', 'Question_Count', 'Personal_Count', 'Announcement_Count', 'Discussion_Count', 'Conversation_Count', 'Event_Count', 'Too Many Tokens_Count', 'Other_Count', 
                   'Interest1', 'Interest2', 'Interest3', 'Interest4', 'Interest5', 'Suggested_Group', 'Processing_Time', 'API_Calls']
     
-    # Write the header once
-    with open('user_data_summary.csv', 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
+    file_exists = os.path.isfile('user_data_summary.csv')
+    
+    if not file_exists:
+        # Write the header if the file doesn't exist
+        with open('user_data_summary.csv', 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+    
+    # Read existing users from the file
+    existing_users = set()
+    if file_exists:
+        with open('user_data_summary.csv', 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            existing_users = set(row['User'] for row in reader)
     
     total_processing_time = 0
     total_api_calls = 0
     users_with_interests = 0
     
     for user in all_users:
+        if user in existing_users:
+            print(f"Skipping user {user} (already processed)")
+            continue
+        
         result = process_user(user)
         if result:
             interests = result['interests_data'] or {}
@@ -284,6 +331,7 @@ def process_all_users(all_users):
                     'Generic_Count': result['message_counts']['Generic'],
                     'Question_Count': result['message_counts']['Question'],
                     'Personal_Count': result['message_counts']['Personal'],
+                    'Discussion_Count': result['message_counts']['Discussion'],
                     'Announcement_Count': result['message_counts']['Announcement'],
                     'Other_Count': result['message_counts']['Other'],
                     'Interest1': interests.get('interest1', ''),
